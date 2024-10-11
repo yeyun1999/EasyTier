@@ -694,6 +694,7 @@ impl StunInfoCollector {
         // NOTICE: we may need to choose stun stun server based on geo location
         // stun server cross nation may return a external ip address with high latency and loss rate
         vec![
+            "stun.nextcloud.com",
             "stun.voipstunt.com:3478"
         ]
         .iter()
