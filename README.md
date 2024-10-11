@@ -10,7 +10,7 @@
 
 **Please visit the [EasyTier Official Website](https://www.easytier.top/en/) to view the full documentation.**
 
-EasyTier is a simple, safe and decentralized VPN networking solution implemented with the Rust language and Tokio framework.
+EasyTier is a simple, safe and decentralized  VPN networking solution implemented with the Rust language and Tokio framework.
 
 <p align="center">
 <img src="assets/image-5.png" width="300">
