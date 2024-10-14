@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import InputGroup from 'primevue/inputgroup'
 import InputGroupAddon from 'primevue/inputgroupaddon'
-import { ping } from 'tauri-plugin-vpnservice-api'
 import { getOsHostname } from '~/composables/network'
 
 import { NetworkingMethod } from '~/types/network'
@@ -42,10 +41,11 @@ function searchUrlSuggestions(e: { query: string }): string[] {
   if (query.match(/^\w+:.*/)) {
     // if query is a valid url, then add to suggestions
     try {
+      // eslint-disable-next-line no-new
       new URL(query)
       ret.push(query)
     }
-    catch (e) {}
+    catch {}
   }
   else {
     for (const proto in protos) {
@@ -83,6 +83,20 @@ const peerSuggestions = ref([''])
 
 function searchPeerSuggestions(e: { query: string }) {
   peerSuggestions.value = searchUrlSuggestions(e)
+}
+
+const inetSuggestions = ref([''])
+
+function searchInetSuggestions(e: { query: string }) {
+  if (e.query.search('/') >= 0) {
+    inetSuggestions.value = [e.query]
+  } else {
+    const ret = []
+    for (let i = 0; i < 32; i++) {
+      ret.push(`${e.query}/${i}`)
+    }
+    inetSuggestions.value = ret
+  }
 }
 
 const listenerSuggestions = ref([''])
@@ -128,18 +142,12 @@ const osHostname = ref<string>('')
 
 onMounted(async () => {
   osHostname.value = await getOsHostname()
-  osHostname.value = await ping('ffdklsajflkdsjl') || ''
 })
 </script>
 
 <template>
   <div class="flex flex-column h-full">
     <div class="flex flex-column">
-      <div class="w-10/12 self-center mb-3">
-        <Message severity="warn">
-          {{ t('dhcp_experimental_warning') }}
-        </Message>
-      </div>
       <div class="w-10/12 self-center ">
         <Panel :header="t('basic_settings')">
           <div class="flex flex-column gap-y-2">
@@ -159,8 +167,9 @@ onMounted(async () => {
                     aria-describedby="virtual_ipv4-help"
                   />
                   <InputGroupAddon>
-                    <span>/24</span>
+                    <span>/</span>
                   </InputGroupAddon>
+                  <InputNumber v-model="curNetwork.network_length" :disabled="curNetwork.dhcp" inputId="horizontal-buttons" showButtons :step="1" mode="decimal" :min="1" :max="32" fluid class="max-w-20"/>
                 </InputGroup>
               </div>
             </div>
@@ -227,9 +236,10 @@ onMounted(async () => {
             <div class="flex flex-row gap-x-9 flex-wrap w-full">
               <div class="flex flex-column gap-2 grow p-fluid">
                 <label for="username">{{ t('proxy_cidrs') }}</label>
-                <Chips
-                  id="chips" v-model="curNetwork.proxy_cidrs"
-                  :placeholder="t('chips_placeholder', ['10.0.0.0/24'])" separator=" " class="w-full"
+                <AutoComplete
+                  id="subnet-proxy"
+                  v-model="curNetwork.proxy_cidrs" :placeholder="t('chips_placeholder', ['10.0.0.0/24'])"
+                  class="w-full" multiple fluid :suggestions="inetSuggestions" @complete="searchInetSuggestions"
                 />
               </div>
             </div>
