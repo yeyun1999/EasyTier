@@ -127,6 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "src/proto/error.proto",
         "src/proto/tests.proto",
         "src/proto/cli.proto",
+        "src/proto/web.proto",
     ];
 
     for proto_file in &proto_files {
@@ -134,9 +135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     prost_build::Config::new()
+        .protoc_arg("--experimental_allow_proto3_optional")
         .type_attribute(".common", "#[derive(serde::Serialize, serde::Deserialize)]")
         .type_attribute(".error", "#[derive(serde::Serialize, serde::Deserialize)]")
         .type_attribute(".cli", "#[derive(serde::Serialize, serde::Deserialize)]")
+        .type_attribute(".web", "#[derive(serde::Serialize, serde::Deserialize)]")
         .type_attribute(
             "peer_rpc.GetIpListResponse",
             "#[derive(serde::Serialize, serde::Deserialize)]",
@@ -146,7 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .type_attribute("peer_rpc.ForeignNetworkRouteInfoKey", "#[derive(Hash, Eq)]")
         .type_attribute("common.RpcDescriptor", "#[derive(Hash, Eq)]")
         .service_generator(Box::new(rpc_build::ServiceGenerator::new()))
-        .btree_map(&["."])
+        .btree_map(["."])
         .compile_protos(&proto_files, &["src/proto/"])
         .unwrap();
 

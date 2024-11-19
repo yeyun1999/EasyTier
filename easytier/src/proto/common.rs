@@ -2,18 +2,34 @@ use std::{fmt::Display, str::FromStr};
 
 use anyhow::Context;
 
+use crate::tunnel::packet_def::CompressorAlgo;
+
 include!(concat!(env!("OUT_DIR"), "/common.rs"));
 
 impl From<uuid::Uuid> for Uuid {
     fn from(uuid: uuid::Uuid) -> Self {
         let (high, low) = uuid.as_u64_pair();
-        Uuid { low, high }
+        Uuid {
+            part1: (high >> 32) as u32,
+            part2: (high & 0xFFFFFFFF) as u32,
+            part3: (low >> 32) as u32,
+            part4: (low & 0xFFFFFFFF) as u32,
+        }
     }
 }
 
 impl From<Uuid> for uuid::Uuid {
     fn from(uuid: Uuid) -> Self {
-        uuid::Uuid::from_u64_pair(uuid.high, uuid.low)
+        uuid::Uuid::from_u64_pair(
+            (u64::from(uuid.part1) << 32) | u64::from(uuid.part2),
+            (u64::from(uuid.part3) << 32) | u64::from(uuid.part4),
+        )
+    }
+}
+
+impl From<String> for Uuid {
+    fn from(value: String) -> Self {
+        uuid::Uuid::parse_str(&value).unwrap().into()
     }
 }
 
@@ -163,6 +179,29 @@ impl From<SocketAddr> for std::net::SocketAddr {
                 0,
                 0,
             )),
+        }
+    }
+}
+
+impl TryFrom<CompressionAlgoPb> for CompressorAlgo {
+    type Error = anyhow::Error;
+
+    fn try_from(value: CompressionAlgoPb) -> Result<Self, Self::Error> {
+        match value {
+            CompressionAlgoPb::Zstd => Ok(CompressorAlgo::ZstdDefault),
+            CompressionAlgoPb::None => Ok(CompressorAlgo::None),
+            _ => Err(anyhow::anyhow!("Invalid CompressionAlgoPb")),
+        }
+    }
+}
+
+impl TryFrom<CompressorAlgo> for CompressionAlgoPb {
+    type Error = anyhow::Error;
+
+    fn try_from(value: CompressorAlgo) -> Result<Self, Self::Error> {
+        match value {
+            CompressorAlgo::ZstdDefault => Ok(CompressionAlgoPb::Zstd),
+            CompressorAlgo::None => Ok(CompressionAlgoPb::None),
         }
     }
 }

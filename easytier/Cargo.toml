@@ -17,16 +17,15 @@ readme = "README.md"
 [[bin]]
 name = "easytier-core"
 path = "src/easytier-core.rs"
+test = false
 
 [[bin]]
 name = "easytier-cli"
 path = "src/easytier-cli.rs"
-test = false
 
 [lib]
 name = "easytier"
 path = "src/lib.rs"
-test = false
 
 [dependencies]
 git-version = "0.3.9"
@@ -182,6 +181,13 @@ sys-locale = "0.3"
 ringbuf = "0.4.5"
 async-ringbuf = "0.3.1"
 
+service-manager = {git = "https://github.com/chipsenkbeil/service-manager-rs.git", branch = "main"}
+
+async-compression = { version = "0.4.17", default-features = false, features = ["zstd", "tokio"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows", target_os = "freebsd"))'.dependencies]
+machine-uid = "0.5.3"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = [
     "Win32_Networking_WinSock",
@@ -191,13 +197,14 @@ windows-sys = { version = "0.52", features = [
 ] }
 encoding = "0.2"
 winreg = "0.52"
+windows-service = "0.7.0"
 
 [build-dependencies]
 tonic-build = "0.12"
 globwalk = "0.8.1"
 regex = "1"
 prost-build = "0.13.2"
-rpc_build = { path = "src/proto/rpc_build" }
+rpc_build = { package = "easytier-rpc-build", version = "0.1.0", features = ["internal-namespace"] }
 
 [target.'cfg(windows)'.build-dependencies]
 reqwest = { version = "0.11", features = ["blocking"] }

@@ -36,7 +36,7 @@ jobs:
       matrix:
         include:
           - TARGET: android
-            OS: ubuntu-latest
+            OS: ubuntu-22.04
             ARTIFACT_NAME: android
     runs-on: ${{ matrix.OS }}
     env:
@@ -95,8 +95,8 @@ jobs:
 
       - name: Install frontend dependencies
         run: |
-          (cd easytier-gui; pnpm install)
-          (cd tauri-plugin-vpnservice; pnpm install; pnpm build)
+          pnpm -r install
+          pnpm -r build
 
       - name: Cargo cache
         uses: actions/cache@v4

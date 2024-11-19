@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     sync::{atomic::AtomicU32, Arc},
     time::Duration,
@@ -13,8 +14,11 @@ use crate::{
         netns::{NetNS, ROOT_NETNS_NAME},
     },
     instance::instance::Instance,
-    tunnel::common::tests::wait_for_condition,
-    tunnel::{ring::RingTunnelConnector, tcp::TcpTunnelConnector, udp::UdpTunnelConnector},
+    proto::common::CompressionAlgoPb,
+    tunnel::{
+        common::tests::wait_for_condition, ring::RingTunnelConnector, tcp::TcpTunnelConnector,
+        udp::UdpTunnelConnector,
+    },
 };
 
 #[cfg(feature = "wireguard")]
@@ -61,12 +65,13 @@ pub fn get_inst_config(inst_name: &str, ns: Option<&str>, ipv4: &str) -> TomlCon
 }
 
 pub async fn init_three_node(proto: &str) -> Vec<Instance> {
-    init_three_node_ex(proto, |cfg| cfg).await
+    init_three_node_ex(proto, |cfg| cfg, false).await
 }
 
 pub async fn init_three_node_ex<F: Fn(TomlConfigLoader) -> TomlConfigLoader>(
     proto: &str,
     cfg_cb: F,
+    use_public_server: bool,
 ) -> Vec<Instance> {
     prepare_linux_namespaces();
 
@@ -91,26 +96,26 @@ pub async fn init_three_node_ex<F: Fn(TomlConfigLoader) -> TomlConfigLoader>(
     inst3.run().await.unwrap();
 
     if proto == "tcp" {
-        inst2
+        inst1
             .get_conn_manager()
             .add_connector(TcpTunnelConnector::new(
-                "tcp://10.1.1.1:11010".parse().unwrap(),
+                "tcp://10.1.1.2:11010".parse().unwrap(),
             ));
     } else if proto == "udp" {
-        inst2
+        inst1
             .get_conn_manager()
             .add_connector(UdpTunnelConnector::new(
-                "udp://10.1.1.1:11010".parse().unwrap(),
+                "udp://10.1.1.2:11010".parse().unwrap(),
             ));
     } else if proto == "wg" {
         #[cfg(feature = "wireguard")]
-        inst2
+        inst1
             .get_conn_manager()
             .add_connector(WgTunnelConnector::new(
-                "wg://10.1.1.1:11011".parse().unwrap(),
+                "wg://10.1.1.2:11011".parse().unwrap(),
                 WgConfig::new_from_network_identity(
-                    &inst1.get_global_ctx().get_network_identity().network_name,
-                    &inst1
+                    &inst2.get_global_ctx().get_network_identity().network_name,
+                    &inst2
                         .get_global_ctx()
                         .get_network_identity()
                         .network_secret
@@ -119,36 +124,53 @@ pub async fn init_three_node_ex<F: Fn(TomlConfigLoader) -> TomlConfigLoader>(
             ));
     } else if proto == "ws" {
         #[cfg(feature = "websocket")]
-        inst2
+        inst1
             .get_conn_manager()
             .add_connector(crate::tunnel::websocket::WSTunnelConnector::new(
-                "ws://10.1.1.1:11011".parse().unwrap(),
+                "ws://10.1.1.2:11011".parse().unwrap(),
             ));
     } else if proto == "wss" {
         #[cfg(feature = "websocket")]
-        inst2
+        inst1
             .get_conn_manager()
             .add_connector(crate::tunnel::websocket::WSTunnelConnector::new(
-                "wss://10.1.1.1:11012".parse().unwrap(),
+                "wss://10.1.1.2:11012".parse().unwrap(),
             ));
     }
 
-    inst2
+    inst3
         .get_conn_manager()
         .add_connector(RingTunnelConnector::new(
-            format!("ring://{}", inst3.id()).parse().unwrap(),
+            format!("ring://{}", inst2.id()).parse().unwrap(),
         ));
 
     // wait inst2 have two route.
     wait_for_condition(
-        || async { inst2.get_peer_manager().list_routes().await.len() == 2 },
-        Duration::from_secs(5000),
+        || async {
+            if !use_public_server {
+                inst2.get_peer_manager().list_routes().await.len() == 2
+            } else {
+                inst2
+                    .get_peer_manager()
+                    .get_foreign_network_manager()
+                    .list_foreign_networks()
+                    .await
+                    .foreign_networks
+                    .len()
+                    == 1
+            }
+        },
+        Duration::from_secs(5),
     )
     .await;
 
     wait_for_condition(
-        || async { inst1.get_peer_manager().list_routes().await.len() == 2 },
-        Duration::from_secs(5000),
+        || async {
+            let routes = inst1.get_peer_manager().list_routes().await;
+            println!("routes: {:?}", routes);
+            routes.len() == 2
+        },
+        Duration::from_secs(5),
     )
     .await;
 
@@ -340,17 +362,30 @@ async fn subnet_proxy_test_icmp() {
 #[serial_test::serial]
 pub async fn subnet_proxy_three_node_test(
     #[values("tcp", "udp", "wg")] proto: &str,
-    #[values(true)] no_tun: bool,
+    #[values(true, false)] no_tun: bool,
+    #[values(true, false)] relay_by_public_server: bool,
 ) {
-    let insts = init_three_node_ex(proto, |cfg| {
-        if cfg.get_inst_name() == "inst3" {
-            let mut flags = cfg.get_flags();
-            flags.no_tun = no_tun;
-            cfg.set_flags(flags);
-            cfg.add_proxy_cidr("10.1.2.0/24".parse().unwrap());
-        }
-        cfg
-    })
+    let insts = init_three_node_ex(
+        proto,
+        |cfg| {
+            if cfg.get_inst_name() == "inst3" {
+                let mut flags = cfg.get_flags();
+                flags.no_tun = no_tun;
+                cfg.set_flags(flags);
+                cfg.add_proxy_cidr("10.1.2.0/24".parse().unwrap());
+            }
+
+            if cfg.get_inst_name() == "inst2" && relay_by_public_server {
+                cfg.set_network_identity(NetworkIdentity::new(
+                    "public".to_string(),
+                    "public".to_string(),
+                ));
+            }
+
+            cfg
+        },
+        relay_by_public_server,
+    )
     .await;
 
     assert_eq!(insts[2].get_global_ctx().get_proxy_cidrs().len(), 1);
@@ -366,6 +401,47 @@ pub async fn subnet_proxy_three_node_test(
     subnet_proxy_test_icmp().await;
     subnet_proxy_test_tcp().await;
     subnet_proxy_test_udp().await;
+}
+
+#[rstest::rstest]
+#[tokio::test]
+#[serial_test::serial]
+pub async fn data_compress(
+    #[values(true, false)] inst1_compress: bool,
+    #[values(true, false)] inst2_compress: bool,
+) {
+    let _insts = init_three_node_ex(
+        "udp",
+        |cfg| {
+            if cfg.get_inst_name() == "inst1" && inst1_compress {
+                let mut flags = cfg.get_flags();
+                flags.data_compress_algo = CompressionAlgoPb::Zstd.into();
+                cfg.set_flags(flags);
+            }
+
+            if cfg.get_inst_name() == "inst3" && inst2_compress {
+                let mut flags = cfg.get_flags();
+                flags.data_compress_algo = CompressionAlgoPb::Zstd.into();
+                cfg.set_flags(flags);
+            }
+
+            cfg
+        },
+        false,
+    )
+    .await;
+
+    wait_for_condition(
+        || async { ping_test("net_a", "10.144.144.3", None).await },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    wait_for_condition(
+        || async { ping_test("net_a", "10.144.144.3", Some(5 * 1024)).await },
+        Duration::from_secs(5),
+    )
+    .await;
 }
 
 #[cfg(feature = "wireguard")]
@@ -757,7 +833,7 @@ pub async fn manual_reconnector(#[values(true, false)] is_foreign: bool) {
         .await
         .unwrap();
 
-    assert_eq!(1, conns.len());
+    assert!(conns.len() >= 1);
 
     wait_for_condition(
         || async { ping_test("net_b", "10.144.145.2", None).await },

@@ -44,8 +44,8 @@ pub enum GlobalCtxEvent {
     DhcpIpv4Conflicted(Option<cidr::Ipv4Inet>),
 }
 
-type EventBus = tokio::sync::broadcast::Sender<GlobalCtxEvent>;
-type EventBusSubscriber = tokio::sync::broadcast::Receiver<GlobalCtxEvent>;
+pub type EventBus = tokio::sync::broadcast::Sender<GlobalCtxEvent>;
+pub type EventBusSubscriber = tokio::sync::broadcast::Receiver<GlobalCtxEvent>;
 
 pub struct GlobalCtx {
     pub inst_name: String,
@@ -136,6 +136,20 @@ impl GlobalCtx {
             self.event_bus.send(event).unwrap();
         } else {
             tracing::warn!("No subscriber for event: {:?}", event);
+        }
+    }
+
+    pub fn check_network_in_whitelist(&self, network_name: &str) -> Result<(), anyhow::Error> {
+        if self
+            .get_flags()
+            .relay_network_whitelist
+            .split(" ")
+            .map(wildmatch::WildMatch::new)
+            .any(|wl| wl.matches(network_name))
+        {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("network {} not in whitelist", network_name).into())
         }
     }
 
