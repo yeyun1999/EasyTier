@@ -787,10 +787,7 @@ impl StunInfoCollector {
         // NOTICE: we may need to choose stun stun server based on geo location
         // stun server cross nation may return a external ip address with high latency and loss rate
         vec![
-            "txt:stun.easytier.cn",
-            "stun.miwifi.com",
-            "stun.chat.bilibili.com",
-            "stun.hitv.com",
+            "stun.nextcloud.com",
         ]
         .iter()
         .map(|x| x.to_string())
