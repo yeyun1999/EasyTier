@@ -788,7 +788,10 @@ impl StunInfoCollector {
         // stun server cross nation may return a external ip address with high latency and loss rate
         vec![
             "stun.voipstunt.com",
-            "stun.nextcloud.com"
+            "stun.nextcloud.com",
+            "stun.12voip.com",
+            "stun.12connect.com",
+            "stun.3cx.com"
         ]
         .iter()
         .map(|x| x.to_string())
